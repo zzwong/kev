@@ -2447,9 +2447,11 @@ def test_jev_request_cap_covers_retries_and_unusable_responses(monkeypatch, resp
     with pytest.raises((RuntimeError, ValueError)):
         predictor(record)
     assert predictor.calls == worker.writes == 1
+    assert predictor.retries == 0
     with pytest.raises(RuntimeError, match="request/token cost cap"):
         predictor(record)
     assert predictor.calls == worker.writes == 1
+    assert predictor.retries == 0
 
 
 def test_jev_counts_a_hosted_error_on_an_oversize_request_as_a_refusal(monkeypatch):

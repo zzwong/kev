@@ -298,6 +298,9 @@ class JevPredictor:
         for attempt in range(self.attempts):
             if self.calls >= self.max_calls or (self.input_tokens + 65536) * PRICE_PER_MILLION / 1e6 > self.budget:
                 raise RuntimeError("Jev evaluation reached the request/token cost cap")
+            if attempt:
+                self.retries += 1
+                time.sleep(min(2 ** (attempt - 1), 30))
             self.calls += 1   # reserve before submission, even if the worker returns no usable response
             self.process.stdin.write(json.dumps(request) + "\n")
             self.process.stdin.flush()
@@ -316,8 +319,6 @@ class JevPredictor:
                 raise JevRefused(f"Jev refused the request: {result['error']['name']} (HTTP {kind})")
             if attempt == self.attempts - 1 or (status is not None and status < 500):
                 raise RuntimeError(f"Jev request failed: {result['error']['name']} (HTTP {status})")
-            self.retries += 1
-            time.sleep(min(2 ** attempt, 30))
         usage = result["usage"]
         if usage.get("inputTokens") is None:
             raise RuntimeError("Jev returned no input token usage; cannot account for cost")
