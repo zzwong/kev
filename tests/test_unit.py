@@ -608,6 +608,24 @@ def test_benchmark_closes_predictions_after_failure(monkeypatch, tmp_path):
     assert closed == [True]
 
 
+def test_remote_predictions_keep_each_response_model(monkeypatch):
+    import io, json
+    import kev.predictors as P
+    bodies = iter([{"model": "revision-a"}, {"model": "revision-b"}, {}])
+
+    def respond(*args, **kwargs):
+        body = {**next(bodies), "answers": {"q": {"noul": 0.75}}}
+        return io.BytesIO(json.dumps(body).encode())
+
+    monkeypatch.setattr(P.urllib.request, "urlopen", respond)
+    predictor = P.RemotePredictor("https://unused.invalid")
+    record = {"state": "x", "questions": {"q": {"type": "noul", "instructions": "?"}}}
+    results = [predictor(record) for _ in range(3)]
+    assert [r["served_model"] for r in results] == ["revision-a", "revision-b", None]
+    assert predictor.served_model == "revision-b"   # legacy last-known summary stays compatible
+    assert all(r["probabilities"]["q"] == {"true": 0.75, "false": 0.25} for r in results)
+
+
 @pytest.fixture
 def fake_endpoint():
     """A local HTTP server standing in for a System One endpoint: -> (base_url, script) where script(state) is a list
