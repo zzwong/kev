@@ -7,6 +7,7 @@ materialize() -> internal record {"state": str, "questions": [{"instr", "options
 """
 import hashlib
 import json
+import math
 from pathlib import Path
 import random
 from datasets import load_dataset
@@ -405,6 +406,10 @@ def materialize(req):
             # soft target keyed by option name (choice), "false"/"true" (noul) or level index as a string (score); options the
             # target does not name get 0, then the vector is normalised. Used for unknowable records (uniform over the options).
             t = [float(src_q["target"].get(k, 0.0)) for k in q["keys"]]
-            if sum(t) <= 0: raise ValueError(f"target for {qid} puts no mass on any option")
-            q["target"] = [x / sum(t) for x in t]
+            if not all(math.isfinite(x) and x >= 0 for x in t):
+                raise ValueError(f"target for {qid} needs finite, nonnegative option weights")
+            total = sum(t)
+            if total <= 0: raise ValueError(f"target for {qid} puts no mass on any option")
+            if not math.isfinite(total): raise ValueError(f"target for {qid} has nonfinite total mass")
+            q["target"] = [x / total for x in t]
     return rec

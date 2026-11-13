@@ -143,6 +143,26 @@ def test_load_records_jsonl(tmp_path):
     except ValueError as e: assert "no label" in str(e)
 
 
+@pytest.mark.parametrize("target", [
+    {"a": -1, "b": 2}, {"a": float("nan")}, {"a": float("inf")}, {"a": -float("inf")},
+    {"a": 1e308, "b": 1e308}, {"a": 0, "b": 0}, {},
+])
+def test_materialize_rejects_invalid_soft_target_distributions(target):
+    from kev.data import materialize
+    req = {"state": "x", "questions": {"q": {"type": "choice", "instructions": "Which?", "criteria": {"a": None, "b": None},
+                                               "label": "a", "target": target, "src": "t"}}}
+    with pytest.raises(ValueError, match="target for q"):
+        materialize(req)
+
+
+@pytest.mark.parametrize("target,expected", [({"a": 1}, [1.0, 0.0]), ({"a": 0, "b": 2}, [0.0, 1.0]), ({"a": 2, "b": 6}, [0.25, 0.75])])
+def test_materialize_preserves_valid_soft_target_normalization(target, expected):
+    from kev.data import materialize
+    req = {"state": "x", "questions": {"q": {"type": "choice", "instructions": "Which?", "criteria": {"a": None, "b": None},
+                                               "label": "a", "target": target, "src": "t"}}}
+    assert materialize(req)["questions"][0]["target"] == expected
+
+
 def test_soft_targets_and_date_facts():
     """Night-2 additions: a question with a soft target materializes to a normalized vector aligned with its keys, survives
     option permutation, and trains with cross-entropy against the target; date_facts writes one sentence per date pair."""
