@@ -442,8 +442,9 @@ def parse_args():
         ap.error("epochs, accum, n_per_source, lora, batch and synthetic_repeat must be positive; 0 < public_frac <= 1")
     if a.dtype == "bf16" and a.device != "cuda":
         ap.error("--dtype bf16 requires --device cuda")
-    if a.lr <= 0 or a.head_lr < 0 or a.weight_decay < 0 or min(a.ord_w, a.perm_kl, a.anchor_w) < 0 or not 0 <= a.perm_frac <= 1:
-        ap.error("invalid learning rate or loss weights")
+    rates_and_weights = (a.lr, a.head_lr, a.weight_decay, a.ord_w, a.perm_kl, a.anchor_w)
+    if not all(math.isfinite(v) and v >= 0 for v in rates_and_weights) or a.lr == 0 or not 0 <= a.perm_frac <= 1:
+        ap.error("learning rates and loss weights must be finite and nonnegative; --lr must be positive and --perm_frac in [0, 1]")
     loss_options = (a.label_smoothing, a.brier_w, a.focal_gamma)
     if not all(math.isfinite(v) and v >= 0 for v in loss_options) or a.label_smoothing > 1 or sum(v > 0 for v in loss_options) > 1:
         ap.error("use at most one finite, nonnegative loss modifier; smoothing must be <= 1")

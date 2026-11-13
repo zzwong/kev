@@ -1654,6 +1654,28 @@ def _parse_train(monkeypatch, *args):
     return train.parse_args()
 
 
+@pytest.mark.parametrize("option", ["lr", "head_lr", "weight_decay", "ord_w", "perm_kl", "anchor_w", "perm_frac"])
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.1"])
+def test_train_refuses_nonfinite_or_negative_rates_and_weights(monkeypatch, capsys, option, value):
+    with pytest.raises(SystemExit) as error:
+        _parse_train(monkeypatch, f"--{option}={value}")
+    assert error.value.code == 2
+    assert "must be finite and nonnegative" in capsys.readouterr().err
+
+
+def test_train_rate_boundaries(monkeypatch, capsys):
+    with pytest.raises(SystemExit):
+        _parse_train(monkeypatch, "--lr=0")
+    assert "--lr must be positive" in capsys.readouterr().err
+    for fraction in ("0", "1"):
+        args = _parse_train(monkeypatch, "--lr=1e-4", "--head_lr=0", "--weight_decay=0",
+                            "--ord_w=0", "--perm_kl=0", "--anchor_w=0", f"--perm_frac={fraction}")
+        assert args.lr == 1e-4 and args.head_lr == args.weight_decay == 0
+    args = _parse_train(monkeypatch, "--head_lr=0.01", "--ord_w=0.1", "--perm_kl=0.2",
+                        "--anchor=anchors.json", "--anchor_w=0.3")
+    assert (args.head_lr, args.ord_w, args.perm_kl, args.anchor_w) == (0.01, 0.1, 0.2, 0.3)
+
+
 def test_row_budget_refuses_split_loss_terms(monkeypatch, capsys):
     """--row_budget splits a record's questions into parts that each carry their share of its mean question loss; the
     permutation KL and the anchor KL are per record (the anchor over its anchored questions), so both are refused with
