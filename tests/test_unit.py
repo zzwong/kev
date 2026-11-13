@@ -561,6 +561,53 @@ def test_benchmark_records_failure_when_nothing_is_evaluable(tmp_path, count):
         assert len(json.loads((directory / "rejected.json").read_text(encoding="utf-8"))) == count
 
 
+def test_benchmark_predictions_bound_pending_work_and_preserve_order(monkeypatch):
+    import kev.benchmark as B
+    submitted, shutdown = [], []
+
+    class Executor:
+        def __init__(self, max_workers): assert max_workers == 2
+        def submit(self, predictor, record):
+            submitted.append(record)
+            return SimpleNamespace(result=lambda: predictor(record))
+        def shutdown(self, **kwargs): shutdown.append(kwargs)
+
+    monkeypatch.setattr(B, "ThreadPoolExecutor", Executor)
+    predictor = lambda record: record * 10
+    predictor.concurrency = 2
+    results = B.predictions(list(range(5)), predictor)
+    first = next(results)
+    assert submitted == [0, 1]
+    assert first() == 0
+    assert next(results)() == 10
+    assert submitted == [0, 1, 2]
+    assert [result() for result in results] == [20, 30, 40]
+    assert shutdown == [{"wait": False, "cancel_futures": True}]
+    submitted.clear(); shutdown.clear()
+    results = B.predictions(list(range(5)), predictor)
+    next(results)
+    results.close()
+    assert submitted == [0, 1]
+    assert shutdown == [{"wait": False, "cancel_futures": True}]
+
+
+def test_benchmark_closes_predictions_after_failure(monkeypatch, tmp_path):
+    import kev.benchmark as B
+    closed = []
+
+    def fail(): raise RuntimeError("predictor failed")
+    def predictions(*args):
+        try:
+            yield fail
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(B, "predictions", predictions)
+    with pytest.raises(RuntimeError, match="predictor failed"):
+        B.evaluate_records([{"questions": {"q": {}}, "_meta": {"id": "r"}}], None, tmp_path / "failed")
+    assert closed == [True]
+
+
 @pytest.fixture
 def fake_endpoint():
     """A local HTTP server standing in for a System One endpoint: -> (base_url, script) where script(state) is a list

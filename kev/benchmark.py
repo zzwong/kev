@@ -11,7 +11,9 @@ import functools
 import json
 import math
 import os
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 
 import numpy as np
@@ -115,8 +117,13 @@ def predictions(records, predictor):
         return
     executor = ThreadPoolExecutor(max_workers=min(workers, len(records)))
     try:
-        for future in [executor.submit(predictor, record) for record in records]:
-            yield future.result
+        remaining = iter(records)
+        pending = deque(executor.submit(predictor, next(remaining)) for _ in range(min(workers, len(records))))
+        while pending:
+            yield pending.popleft().result
+            for record in remaining:
+                pending.append(executor.submit(predictor, record))
+                break
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
 
@@ -130,8 +137,7 @@ def evaluate_records(records, predictor, directory, temperature=1.0, heldout_sou
     coverage = {"requested_records": len(records), "requested_questions": sum(len(r["questions"]) for r in records),
                 "evaluated_records": 0, "evaluated_questions": 0, "rejected_records": 0, "truncated_records": 0}
     rows, latencies, rejected = [], [], []
-    with (directory / "predictions.jsonl").open("w", encoding=ENCODING) as output:
-        preds = predictions(records, predictor)
+    with (directory / "predictions.jsonl").open("w", encoding=ENCODING) as output, closing(predictions(records, predictor)) as preds:
         for record in records:
             try:
                 pred = next(preds)()
