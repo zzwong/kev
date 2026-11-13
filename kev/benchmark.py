@@ -157,6 +157,10 @@ def evaluate_records(records, predictor, directory, temperature=1.0, heldout_sou
                 print(f"evaluated {coverage['evaluated_records']}/{len(records)}", flush=True)
     write_json(directory / "rows.json", rows)
     if rejected: write_json(directory / "rejected.json", rejected)
+    if not rows:
+        error = ValueError("benchmark produced no evaluable questions")
+        write_json(directory / "failure.json", {"coverage": coverage, "error_type": type(error).__name__, "error": str(error)})
+        raise error
     report = summarize(rows, temperature, heldout_sources)
     report.update(coverage=coverage, latency_ms={"median": float(np.median(latencies)), "p95": float(np.quantile(latencies, .95))},
                   calibration={"inference_temperature": getattr(predictor, "temperature", None),

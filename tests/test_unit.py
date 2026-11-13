@@ -537,6 +537,30 @@ def test_benchmark_refuses_over_length_records(tiny_model, tmp_path):
     assert report["coverage"]["rejected_records"] == 1 and report["coverage"]["evaluated_records"] == 2 and report["coverage"]["truncated_records"] == 0
 
 
+@pytest.mark.parametrize("count", [0, 2])
+def test_benchmark_records_failure_when_nothing_is_evaluable(tmp_path, count):
+    import json
+    from kev.benchmark import evaluate_records
+    from kev.model import ContextOverflow
+
+    def refuse(_):
+        raise ContextOverflow("state exceeds context")
+
+    records = [{"questions": {"q": {}}, "_meta": {"id": f"r{i}"}} for i in range(count)]
+    directory = tmp_path / "empty-benchmark"
+    with pytest.raises(ValueError, match="no evaluable questions"):
+        evaluate_records(records, refuse, directory, skip_overlong=True)
+    failure = json.loads((directory / "failure.json").read_text(encoding="utf-8"))
+    assert failure["error_type"] == "ValueError"
+    assert failure["coverage"] == {"requested_records": count, "requested_questions": count,
+                                   "evaluated_records": 0, "evaluated_questions": 0, "rejected_records": count, "truncated_records": 0}
+    assert json.loads((directory / "rows.json").read_text(encoding="utf-8")) == []
+    assert (directory / "predictions.jsonl").read_text(encoding="utf-8") == ""
+    assert not (directory / "report.json").exists()
+    if count:
+        assert len(json.loads((directory / "rejected.json").read_text(encoding="utf-8"))) == count
+
+
 @pytest.fixture
 def fake_endpoint():
     """A local HTTP server standing in for a System One endpoint: -> (base_url, script) where script(state) is a list
