@@ -84,7 +84,7 @@ def mirror(path, repo=DEFAULT_REPO, api=None, root="/runs", force=False, log=pri
             continue
         entry = {"repo": repo, "path": dest, "commit": info.oid, "uploaded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
         try: record(path, entry)
-        except OSError as error:
+        except (OSError, ValueError) as error:
             log(f"!!! mirror: {path} was uploaded to {repo}/{dest} (commit {info.oid}), but its local record could not be saved: "
                 f"{type(error).__name__}: {str(error)[:300]}; a later mirror may upload it again")
             return entry   # the upload succeeded; never repeat it just because the receipt could not be persisted

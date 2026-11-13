@@ -65,3 +65,20 @@ class MirrorRecordTests(unittest.TestCase):
             recorded.assert_not_called()
             self.assertEqual(entry["commit"], "forced")
             hub.upload_folder.assert_called_once()
+
+    def test_force_corrupt_snapshot_keeps_successful_upload_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "trial" / "snapshots" / "step-0000001" / "checkpoint"
+            path.mkdir(parents=True)
+            (path / "head.pt").write_bytes(b"test")
+            metadata = path / mirror.SNAPSHOT_INFO
+            metadata.write_text("{broken", encoding="utf-8")
+            hub = Mock()
+            hub.repo_info.return_value = SimpleNamespace(private=True)
+            hub.upload_folder.return_value = SimpleNamespace(oid="forced-snapshot")
+            logs = []
+            entry = mirror.mirror(path, "me/private", api=hub, root=tmp, force=True, log=logs.append)
+            self.assertEqual(entry["commit"], "forced-snapshot")
+            hub.upload_folder.assert_called_once()
+            self.assertEqual(metadata.read_text(encoding="utf-8"), "{broken")
+            self.assertTrue(any("local record could not be saved" in line and "forced-snapshot" in line for line in logs))
