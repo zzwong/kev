@@ -163,6 +163,23 @@ def test_materialize_preserves_valid_soft_target_normalization(target, expected)
     assert materialize(req)["questions"][0]["target"] == expected
 
 
+@pytest.mark.parametrize("label", [-1, 3, 1.9, 1.0, True, False, "1", None, float("nan"), float("inf")])
+def test_materialize_rejects_invalid_score_labels(label):
+    from kev.data import materialize
+    req = {"state": "x", "questions": {"rating": {"type": "score", "instructions": "Rate it", "criteria": ["low", "medium", "high"],
+                                                    "label": label, "src": "t"}}}
+    with pytest.raises(ValueError, match="label for rating must be an integer score index"):
+        materialize(req)
+
+
+@pytest.mark.parametrize("label", [0, 1, 2])
+def test_materialize_preserves_valid_score_labels(label):
+    from kev.data import materialize
+    req = {"state": "x", "questions": {"rating": {"type": "score", "instructions": "Rate it", "criteria": ["low", "medium", "high"],
+                                                    "label": label, "src": "t"}}}
+    assert materialize(req)["questions"][0]["label"] == label
+
+
 def test_soft_targets_and_date_facts():
     """Night-2 additions: a question with a soft target materializes to a normalized vector aligned with its keys, survives
     option permutation, and trains with cross-entropy against the target; date_facts writes one sentence per date pair."""

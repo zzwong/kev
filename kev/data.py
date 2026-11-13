@@ -8,6 +8,7 @@ materialize() -> internal record {"state": str, "questions": [{"instr", "options
 import hashlib
 import json
 import math
+from numbers import Integral
 from pathlib import Path
 import random
 from datasets import load_dataset
@@ -400,6 +401,8 @@ def materialize(req):
     rec, meta = to_record(SystemOneRequest.model_validate(api_request(req)))
     for q, m, (qid, src_q) in zip(rec["questions"], meta, req["questions"].items()):
         y = src_q["label"]
+        if m["type"] == "score" and (isinstance(y, bool) or not isinstance(y, Integral) or not 0 <= y < len(m["keys"])):
+            raise ValueError(f"label for {qid} must be an integer score index in [0, {len(m['keys']) - 1}]")
         q["label"] = m["keys"].index(y) if m["type"] == "choice" else int(y)   # noul labels are bools, score labels level indices
         q["src"] = src_q["src"]; q["qtype"] = m["type"]; q["qid"] = qid; q["keys"] = m["keys"]
         if src_q.get("target") is not None:
