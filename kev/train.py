@@ -501,6 +501,13 @@ def finish_checkpoint(out, meta, tok):
     tok.save_pretrained(out)
 
 
+def finish_training_checkpoint(out, meta, tok, metrics, resume_dir):
+    """Retire the resume point only after every final checkpoint artifact has been written."""
+    finish_checkpoint(out, meta, tok)
+    write_json(Path(out) / "training_metrics.json", metrics)
+    shutil.rmtree(resume_dir, ignore_errors=True)
+
+
 RESUME_KNOBS = ("resume", "save_every_steps", "save_every_minutes", "stop_after", "snapshot_fractions", "snapshot_every_steps", "snapshot_dir")   # may differ between a run and its continuation
 RESUMED = ("step", "seen", "tokens_seen", "peak_mem", "optimizer_seconds", "step_seconds", "elapsed", "epoch", "microbatch", "grad_norms")   # counters a resume point carries
 
@@ -667,16 +674,14 @@ def main():
     else: model.lm.save_pretrained(a.out)
     if rank: return
     backbone_seconds = time.time() - t0 - wall
-    shutil.rmtree(resume_dir, ignore_errors=True)   # the checkpoint supersedes it
     meta.head, meta.extra = model.head.state_dict(), {"args": vars(a), "suite_sha256": suite_hash, "init_source": init_source}
-    finish_checkpoint(a.out, meta, tok)
-    write_json(out_dir / "training_metrics.json", {"wall_seconds": wall, "records_seen": round(seen),
+    finish_training_checkpoint(a.out, meta, tok, {"wall_seconds": wall, "records_seen": round(seen),
                "requested_records": a.epochs * len(reqs), "truncated_records": 0, "rejected_records": 0,
                "optimizer_steps": step, "forward_tokens": round(tokens_seen), "step_seconds": step_seconds, "optimizer_seconds": optimizer_seconds, "resume_seconds": resume_seconds, "resume_write_seconds": writer.seconds if writer else [], "world_size": world,
                "backbone_save_seconds": round(backbone_seconds, 1), "snapshots": snapshots.written if snapshots else [],   # snapshots: this attempt's (each snapshot.json has its own)
                "grad_norm": grad_norm_summary(grad_norms),
                "weights": meta.weights, "peak_device_bytes": peak_mem, "device": dev, "dtype": a.dtype, "batch": a.batch,
-               "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == "darwin" else 1024)})
+               "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == "darwin" else 1024)}, resume_dir)
     print("saved", a.out, flush=True)
 
 
