@@ -204,7 +204,8 @@ class RemotePredictor:
             a = body["answers"][qid]
             if q["type"] == "noul": probs[qid] = {"true": float(a["noul"]), "false": 1 - float(a["noul"])}
             else: probs[qid] = {str(k): float(v) for k, v in a["probabilities"].items()}
-        return {"probabilities": probs, "latency_ms": latency, "input_tokens": (body.get("usage") or {}).get("input_tokens")}
+        return {"probabilities": probs, "latency_ms": latency, "input_tokens": (body.get("usage") or {}).get("input_tokens"),
+                "served_model": body.get("model")}   # this response's identity, never another concurrent request's
 
 
 PRICE_PER_MILLION = 0.042   # Jev list price per million input tokens, for the budget cap
@@ -237,6 +238,8 @@ class RotationAveraged:
         preds = [self.predictor(self.rotated(record, r)) for r in range(min(self.rotations, widest))]
         field = "logits" if all("logits" in p for p in preds) else "probabilities"
         out = {"probabilities": {}, "latency_ms": sum(p["latency_ms"] for p in preds), "rotations": len(preds)}
+        if any("served_model" in p for p in preds):
+            out["served_models_by_rotation"] = [p.get("served_model") for p in preds]
         if field == "logits":
             out["logits"] = {}; out["inference_temperature"] = preds[0].get("inference_temperature", 1.0)
         for qid in record["questions"]:
