@@ -98,7 +98,7 @@ def main():
                                  delete_patterns="*" if a.replace else None)
         print(info)
         if a.tag:
-            api.create_tag(a.repo, tag=a.tag, repo_type="model", tag_message=msg, exist_ok=False, revision=a.revision)
+            api.create_tag(a.repo, tag=a.tag, repo_type="model", tag_message=msg, exist_ok=False, revision=info.oid)
             print(f"tagged {a.repo}@{a.tag}")
 
 
