@@ -1676,6 +1676,32 @@ def test_train_rate_boundaries(monkeypatch, capsys):
     assert (args.head_lr, args.ord_w, args.perm_kl, args.anchor_w) == (0.01, 0.1, 0.2, 0.3)
 
 
+@pytest.mark.parametrize("public_count,synthetic_count,fraction,repeat,expected", [
+    (1, 0, 0.1, 1, 0), (1, 0, 0.5, 3, 0), (0, 0, 1.0, 1, 0),
+    (1, 0, 1.0, 1, 1), (2, 0, 0.5, 1, 1), (1, 1, 0.1, 2, 2),
+])
+def test_training_requests_rejects_empty_final_mix(monkeypatch, public_count, synthetic_count, fraction, repeat, expected):
+    from kev import train
+    synthetic_source = sorted(train.SYNTHETIC_SOURCES)[0]
+    records = [{"id": f"public-{i}", "_meta": {"source": "test-public"}} for i in range(public_count)]
+    records += [{"id": f"synthetic-{i}", "_meta": {"source": synthetic_source}} for i in range(synthetic_count)]
+    monkeypatch.setattr(train, "load_split", lambda *args: records)
+    monkeypatch.setattr(train, "validate_training", lambda *args: None)
+    args = SimpleNamespace(data="", suite="unused", train_sources="", public_frac=fraction, synthetic_repeat=repeat, seed=0)
+    if not expected:
+        with pytest.raises(ValueError, match="empty training set") as error:
+            train.training_requests(args, None, {"eval_only_sources": []}, set())
+        if records:
+            assert f"after mixing {len(records)} records" in str(error.value)
+            assert f"--public_frac={fraction}" in str(error.value)
+    else:
+        result = train.training_requests(args, None, {"eval_only_sources": []}, set())
+        assert len(result) == expected
+        assert all(record in records for record in result)
+        if synthetic_count:
+            assert all(record["_meta"]["source"] == synthetic_source for record in result)
+
+
 def test_row_budget_refuses_split_loss_terms(monkeypatch, capsys):
     """--row_budget splits a record's questions into parts that each carry their share of its mean question loss; the
     permutation KL and the anchor KL are per record (the anchor over its anchored questions), so both are refused with

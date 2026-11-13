@@ -120,6 +120,7 @@ def training_requests(a, tok, manifest, holdout):
         if unknown: raise ValueError(f"--train_sources not in the training partition: {sorted(unknown)}")
         reqs = [r for r in reqs if r["_meta"]["source"] in wanted]
         print(f"ablation: training on {sorted(wanted)} -> {len(reqs)} records", flush=True)
+    before_mix = len(reqs)
     if a.public_frac < 1:
         mix_rng = random.Random(source_seed(a.seed, "public_frac"))
         public = [r for r in reqs if r["_meta"]["source"] not in SYNTHETIC_SOURCES]; synth = [r for r in reqs if r["_meta"]["source"] in SYNTHETIC_SOURCES]
@@ -130,6 +131,9 @@ def training_requests(a, tok, manifest, holdout):
         extra = [r for r in reqs if r["_meta"]["source"] in SYNTHETIC_SOURCES] * (a.synthetic_repeat - 1)
         reqs = reqs + extra
         print(f"mix: synthetic_repeat {a.synthetic_repeat} -> +{len(extra)} records", flush=True)
+    if not reqs:
+        raise ValueError(f"empty training set after mixing {before_mix} records "
+                         f"(--public_frac={a.public_frac}, --synthetic_repeat={a.synthetic_repeat})")
     return reqs
 
 
