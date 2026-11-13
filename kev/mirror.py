@@ -61,7 +61,12 @@ def mirror(path, repo=DEFAULT_REPO, api=None, root="/runs", force=False, log=pri
     path = Path(path)
     if not (path / "head.pt").exists() or (path.parent.parent.name == "snapshots" and not is_snapshot(path)):
         log(f"!!! mirror: {path} is not a complete checkpoint (no head.pt, or a snapshot without {SNAPSHOT_INFO}); not uploaded"); return None
-    if not force and (previous := recorded(path)) and previous.get("repo") == repo:
+    try: previous = None if force else recorded(path)
+    except (OSError, ValueError) as error:
+        log(f"!!! mirror: {path} has an unreadable upload record: {type(error).__name__}: {str(error)[:300]}; "
+            "not uploaded (repair the record or explicitly force a new upload)")
+        return None
+    if previous and previous.get("repo") == repo:
         log(f"mirror: {path} is at {repo}/{previous['path']} already (commit {previous['commit']})"); return previous
     if api is None:
         from huggingface_hub import HfApi
