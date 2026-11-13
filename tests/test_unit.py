@@ -199,6 +199,36 @@ def test_soft_targets_and_date_facts():
     assert with_date_facts({"case": "one date: May 1, 2026"}) == {"case": "one date: May 1, 2026"}
 
 
+@pytest.mark.parametrize("fail_at", ["head", "tokenizer", "metrics", None])
+def test_final_checkpoint_retains_resume_until_all_writes_succeed(monkeypatch, tmp_path, fail_at):
+    from kev import train
+    out = tmp_path / "run"
+    resume = out / "resume"
+    resume.mkdir(parents=True)
+    marker = resume / "latest.json"
+    marker.write_text("resume point", encoding="utf-8")
+    writes = []
+
+    def write(kind):
+        assert marker.read_text(encoding="utf-8") == "resume point"
+        writes.append(kind)
+        if fail_at == kind:
+            raise OSError(f"failed {kind}")
+
+    monkeypatch.setattr(train, "write_meta", lambda *args: write("head"))
+    monkeypatch.setattr(train, "write_json", lambda *args: write("metrics"))
+    tokenizer = SimpleNamespace(save_pretrained=lambda *args: write("tokenizer"))
+    if fail_at:
+        with pytest.raises(OSError, match=f"failed {fail_at}"):
+            train.finish_training_checkpoint(out, None, tokenizer, {}, resume)
+        assert marker.read_text(encoding="utf-8") == "resume point"
+        assert writes == ["head", "tokenizer", "metrics"][:["head", "tokenizer", "metrics"].index(fail_at) + 1]
+    else:
+        train.finish_training_checkpoint(out, None, tokenizer, {}, resume)
+        assert writes == ["head", "tokenizer", "metrics"]
+        assert not resume.exists()
+
+
 def test_checkpoint_meta_round_trip_and_defaults(tmp_path):
     """head.pt has one schema (kev.checkpoint.Meta): old files get the same defaults everywhere, unknown keys survive a
     read-modify-write, and LoadOptions.from_env is the only place the KEV_* variables are read."""
