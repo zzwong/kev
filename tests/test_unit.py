@@ -2429,6 +2429,29 @@ def test_jev_attempts_bound_the_retries_on_gateway_errors(monkeypatch):
         assert w.lines == calls and j.retries == calls - 1
 
 
+@pytest.mark.parametrize("response", ['{"error": {"name": "GatewayInternalServerError", "status": 503}}', "not json", ""])
+def test_jev_request_cap_covers_retries_and_unusable_responses(monkeypatch, response):
+    import kev.predictors as P
+    monkeypatch.setattr(P.time, "sleep", lambda _: None)
+
+    class Worker:
+        def __init__(self): self.stdin = self; self.stdout = self; self.writes = 0
+        def write(self, _): self.writes += 1
+        def flush(self): pass
+        def readline(self): return response
+
+    worker = Worker()
+    monkeypatch.setattr(P.subprocess, "Popen", lambda *a, **kw: worker)
+    predictor = P.JevPredictor("key", max_calls=1, attempts=4)
+    record = {"state": "x", "questions": {"q": {"type": "noul", "instructions": "?", "label": True, "src": "t"}}}
+    with pytest.raises((RuntimeError, ValueError)):
+        predictor(record)
+    assert predictor.calls == worker.writes == 1
+    with pytest.raises(RuntimeError, match="request/token cost cap"):
+        predictor(record)
+    assert predictor.calls == worker.writes == 1
+
+
 def test_jev_counts_a_hosted_error_on_an_oversize_request_as_a_refusal(monkeypatch):
     """Past Jev's context the gateway answers 400 or 503. With count_refusals, a 503 (or a request that times out, no
     status) on a request estimated past OVERSIZE x JEV_CONTEXT_TOKENS is a refusal at once, not retried; the same 503 on a

@@ -294,17 +294,17 @@ class JevPredictor:
             self.process.wait(timeout=5)
 
     def __call__(self, record):
-        if self.calls >= self.max_calls or (self.input_tokens + 65536) * PRICE_PER_MILLION / 1e6 > self.budget:
-            raise RuntimeError("Jev evaluation reached the request/token cost cap")
         request = api_request(record)
         for attempt in range(self.attempts):
+            if self.calls >= self.max_calls or (self.input_tokens + 65536) * PRICE_PER_MILLION / 1e6 > self.budget:
+                raise RuntimeError("Jev evaluation reached the request/token cost cap")
+            self.calls += 1   # reserve before submission, even if the worker returns no usable response
             self.process.stdin.write(json.dumps(request) + "\n")
             self.process.stdin.flush()
             line = self.process.stdout.readline()
             if not line:
                 raise RuntimeError("Jev SDK worker exited without a response")
             result = json.loads(line)
-            self.calls += 1
             if "error" not in result:
                 break
             status = result["error"]["status"]
