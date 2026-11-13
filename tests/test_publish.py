@@ -14,7 +14,7 @@ class PublishTagTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
         card = root / "card.md"
-        card.write_text("base_model: test\n")
+        card.write_text("base_model: test\n", encoding="utf-8")
         self.argv = ["kev.publish", "--run", str(root), "--repo", "me/model", "--card", str(card)]
         self.hub = Mock()
         self.hub.list_repo_files.return_value = []
