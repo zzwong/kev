@@ -56,7 +56,8 @@ def ensure_private(api, repo):
 def mirror(path, repo=DEFAULT_REPO, api=None, root="/runs", force=False, log=print):
     """Upload one complete checkpoint directory (a snapshot with its snapshot.json, or a checkpoint with head.pt) to the
     private `repo` and record the commit. -> the record, or None when it was not uploaded (every failure is logged loudly
-    and nothing is raised: the volume copy is primary). Skips a directory already recorded for this repo unless `force`."""
+    and nothing is raised: the volume copy is primary). A failed local record write is logged but still returns the upload
+    identity, without uploading again. Skips a directory already recorded for this repo unless `force`."""
     path = Path(path)
     if not (path / "head.pt").exists() or (path.parent.parent.name == "snapshots" and not is_snapshot(path)):
         log(f"!!! mirror: {path} is not a complete checkpoint (no head.pt, or a snapshot without {SNAPSHOT_INFO}); not uploaded"); return None
@@ -77,7 +78,11 @@ def mirror(path, repo=DEFAULT_REPO, api=None, root="/runs", force=False, log=pri
             log(f"!!! mirror of {path} to {repo} failed (attempt {attempt}/{ATTEMPTS}): {type(error).__name__}: {str(error)[:300]}")
             continue
         entry = {"repo": repo, "path": dest, "commit": info.oid, "uploaded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
-        record(path, entry)
+        try: record(path, entry)
+        except OSError as error:
+            log(f"!!! mirror: {path} was uploaded to {repo}/{dest} (commit {info.oid}), but its local record could not be saved: "
+                f"{type(error).__name__}: {str(error)[:300]}; a later mirror may upload it again")
+            return entry   # the upload succeeded; never repeat it just because the receipt could not be persisted
         log(f"mirror: {path} -> {repo}/{dest} (commit {info.oid})")
         return entry
     log(f"!!! mirror of {path} to {repo} gave up after {ATTEMPTS} attempts; the volume copy is unaffected (retry: modal_app.py::mirror_snapshots)")
