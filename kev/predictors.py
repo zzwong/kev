@@ -238,6 +238,8 @@ class RotationAveraged:
         preds = [self.predictor(self.rotated(record, r)) for r in range(min(self.rotations, widest))]
         field = "logits" if all("logits" in p for p in preds) else "probabilities"
         out = {"probabilities": {}, "latency_ms": sum(p["latency_ms"] for p in preds), "rotations": len(preds)}
+        if any("served_model" in p for p in preds):
+            out["served_models_by_rotation"] = [p.get("served_model") for p in preds]
         if field == "logits":
             out["logits"] = {}; out["inference_temperature"] = preds[0].get("inference_temperature", 1.0)
         for qid in record["questions"]:

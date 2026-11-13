@@ -626,6 +626,20 @@ def test_remote_predictions_keep_each_response_model(monkeypatch):
     assert all(r["probabilities"]["q"] == {"true": 0.75, "false": 0.25} for r in results)
 
 
+@pytest.mark.parametrize("identities", [["revision-a", "revision-b", None], ["revision-a"] * 3, [None] * 3])
+def test_rotation_predictions_preserve_response_identities(identities):
+    from kev.predictors import RotationAveraged
+    remaining = iter(identities)
+    def predictor(record):
+        return {"probabilities": {"q": {"a": 0.5, "b": 0.25, "c": 0.25}}, "latency_ms": 1,
+                "served_model": next(remaining)}
+    record = {"state": "x", "questions": {"q": {"type": "choice", "criteria": {"a": None, "b": None, "c": None}}}}
+    result = RotationAveraged(predictor, 3)(record)
+    assert result["served_models_by_rotation"] == identities
+    assert result["rotations"] == 3
+    assert result["probabilities"]["q"] == pytest.approx({"a": 0.5, "b": 0.25, "c": 0.25})
+
+
 @pytest.fixture
 def fake_endpoint():
     """A local HTTP server standing in for a System One endpoint: -> (base_url, script) where script(state) is a list
